@@ -1,9 +1,4 @@
-mod chain;
-mod commands;
-mod config;
-mod engine;
-mod ipfs;
-mod output;
+use agentmarket::commands;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
