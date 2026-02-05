@@ -26,7 +26,14 @@ enum Commands {
     /// Register agent on-chain via ERC-8004
     Register,
     /// Discover agents and open requests
-    Search,
+    Search {
+        /// Filter by capability
+        #[arg(short, long)]
+        capability: Option<String>,
+        /// Search for open requests instead of agents
+        #[arg(short, long)]
+        requests: bool,
+    },
     /// Create a service request for another agent
     Request,
     /// Submit a response to a request
@@ -62,7 +69,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init => commands::init::run().await,
         Commands::Fund => commands::fund::run().await,
         Commands::Register => commands::register::run().await,
-        Commands::Search => commands::search::run().await,
+        Commands::Search {
+            capability,
+            requests,
+        } => commands::search::run(capability, requests).await,
         Commands::Request => commands::request::run().await,
         Commands::Respond => commands::respond::run().await,
         Commands::Validate => commands::validate::run().await,
