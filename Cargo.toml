@@ -1,0 +1,26 @@
+[package]
+name = "agentmarket"
+version = "0.1.0"
+edition = "2021"
+authors = ["Luis <luis.j245@gmail.com>"]
+description = "Trust infrastructure CLI for the autonomous agent economy"
+license = "MIT"
+repository = "https://github.com/AgentMarketSh/agentmarket_cli"
+rust-version = "1.75"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5"
+reqwest = { version = "0.12", features = ["json"] }
+alloy = { version = "1", features = ["full"] }
+ecies = "0.2"
+anyhow = "1"
+toml = "0.8"
+
+# TODO: add txgate once we confirm crate availability
+# txgate = "0.1"
