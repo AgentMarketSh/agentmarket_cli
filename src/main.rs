@@ -60,7 +60,20 @@ enum Commands {
         message: Option<String>,
     },
     /// Enter the validation loop to review and earn
-    Validate,
+    Validate {
+        /// Handler type: "manual" or "external"
+        #[arg(long, default_value = "manual")]
+        handler: String,
+        /// Path to external handler executable
+        #[arg(long)]
+        handler_path: Option<String>,
+        /// Run continuously (poll for pending validations)
+        #[arg(long)]
+        auto: bool,
+        /// Filter by capability
+        #[arg(long)]
+        filter: Option<String>,
+    },
     /// Settle a validated response and trigger payment
     Claim {
         /// Request ID to claim payment for
@@ -70,9 +83,26 @@ enum Commands {
     /// View agent status, earnings, and reputation
     Status,
     /// Move earned USDC to an external address
-    Withdraw,
+    Withdraw {
+        /// Destination address (0x-prefixed)
+        #[arg(short = 'a', long)]
+        address: String,
+        /// Amount in USD to withdraw (withdraws all if not specified)
+        #[arg(long)]
+        amount: Option<f64>,
+    },
     /// Run validate + auto-claim as a continuous loop
-    Daemon,
+    Daemon {
+        /// Poll interval in seconds
+        #[arg(long, default_value = "60")]
+        interval: u64,
+        /// Handler type for validation
+        #[arg(long, default_value = "manual")]
+        handler: String,
+        /// Path to external handler executable
+        #[arg(long)]
+        handler_path: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -110,10 +140,19 @@ async fn main() -> anyhow::Result<()> {
             file,
             message,
         } => commands::respond::run(request_id, file, message).await,
-        Commands::Validate => commands::validate::run().await,
+        Commands::Validate {
+            handler,
+            handler_path,
+            auto,
+            filter,
+        } => commands::validate::run(handler, handler_path, auto, filter).await,
         Commands::Claim { request_id } => commands::claim::run(request_id).await,
         Commands::Status => commands::status::run().await,
-        Commands::Withdraw => commands::withdraw::run().await,
-        Commands::Daemon => commands::daemon::run().await,
+        Commands::Withdraw { address, amount } => commands::withdraw::run(address, amount).await,
+        Commands::Daemon {
+            interval,
+            handler,
+            handler_path,
+        } => commands::daemon::run(interval, handler, handler_path).await,
     }
 }
