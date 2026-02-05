@@ -6,6 +6,7 @@ mod ipfs;
 mod output;
 
 use clap::{Parser, Subcommand};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
 #[command(name = "agentmarket")]
@@ -44,7 +45,18 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let filter = EnvFilter::try_from_env("AGENTMARKET_LOG_LEVEL")
+        .unwrap_or_else(|_| EnvFilter::new("warn"));
+
+    fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .compact()
+        .with_timer(fmt::time::SystemTime)
+        .init();
+
     let cli = Cli::parse();
+
+    tracing::debug!("command dispatched");
 
     match cli.command {
         Commands::Init => commands::init::run().await,
