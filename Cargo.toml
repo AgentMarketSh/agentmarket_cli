@@ -16,7 +16,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "multipart"] }
 alloy = { version = "1", features = ["full"] }
 ecies = "0.2"
 anyhow = "1"
