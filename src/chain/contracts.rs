@@ -79,26 +79,102 @@ sol! {
 }
 
 // ---------------------------------------------------------------------------
-// Request Registry — Phase 3 placeholder (T-040 / T-043)
+// Request Registry — zero-custody marketplace for agent service requests
 // ---------------------------------------------------------------------------
 
-// The Request Registry contract handles the full request lifecycle:
-// create, respond, validate, claim (hash-lock pattern), cancel, and expire.
-//
-// ABI bindings will be added here once the Solidity contract is written and
-// deployed in Phase 3. See TASKS.md tasks T-040 and T-043 for details.
-//
-// Expected interface (preview):
-//
-//   function createRequest(...) external returns (uint256 requestId);
-//   function respond(uint256 requestId, ...) external;
-//   function validate(uint256 requestId, ...) external;
-//   function claim(uint256 requestId, bytes32 secret) external;
-//   function cancel(uint256 requestId) external;
-//   event RequestCreated(...);
-//   event ResponseSubmitted(...);
-//   event RequestValidated(...);
-//   event RequestClaimed(...);
+sol! {
+    /// Request Registry — zero-custody marketplace for agent service requests.
+    ///
+    /// Handles the full request lifecycle: create, respond, validate,
+    /// claim (hash-lock pattern), cancel, and expire. Payments settle
+    /// atomically in USDC via the hash-lock `claim` function.
+    #[sol(rpc)]
+    contract RequestRegistry {
+        /// Status of a request through its lifecycle.
+        enum RequestStatus {
+            Open,
+            Responded,
+            Validated,
+            Claimed,
+            Cancelled,
+            Expired
+        }
+
+        /// A buyer's service request.
+        struct Request {
+            address buyer;
+            uint256 price;
+            uint256 deadline;
+            uint256 targetAgentId;
+            string ipfsCid;
+            RequestStatus status;
+        }
+
+        /// A seller's response to a request.
+        struct Response {
+            address seller;
+            string ipfsCid;
+            bytes32 secretHash;
+        }
+
+        /// USDC token used for payment settlement.
+        address public usdc;
+
+        /// Address of the validation registry contract.
+        address public validationRegistry;
+
+        /// Auto-incrementing request ID counter.
+        uint256 public nextRequestId;
+
+        /// Validator fee in basis points (e.g., 500 = 5%).
+        uint256 public validatorFeeBps;
+
+        /// Mapping from request ID to Request data.
+        mapping(uint256 => Request) public requests;
+
+        /// Mapping from request ID to Response data.
+        mapping(uint256 => Response) public responses;
+
+        /// Mapping from request ID to assigned validator address.
+        mapping(uint256 => address) public validators;
+
+        /// Create a new service request. Caller becomes the buyer.
+        function createRequest(string calldata ipfsCid, uint256 price, uint256 deadline, uint256 targetAgentId) external returns (uint256 requestId);
+
+        /// Submit a response to an open request. Caller becomes the seller.
+        function submitResponse(uint256 requestId, string calldata ipfsCid, bytes32 secretHash) external;
+
+        /// Submit a validation result for a responded request.
+        function submitValidation(uint256 requestId, bool passed, address validator) external;
+
+        /// Claim payment by revealing the secret. Atomically settles USDC.
+        function claim(uint256 requestId, bytes32 secret) external;
+
+        /// Cancel an open request. Only the buyer can cancel.
+        function cancel(uint256 requestId) external;
+
+        /// Expire a request that has passed its deadline.
+        function expire(uint256 requestId) external;
+
+        /// Emitted when a new request is created.
+        event RequestCreated(uint256 indexed requestId, address indexed buyer, uint256 price, uint256 deadline);
+
+        /// Emitted when a seller submits a response.
+        event ResponseSubmitted(uint256 indexed requestId, address indexed seller, bytes32 secretHash);
+
+        /// Emitted when a request passes or fails validation.
+        event RequestValidated(uint256 indexed requestId, bool passed, address validator);
+
+        /// Emitted when payment is claimed by revealing the secret.
+        event RequestClaimed(uint256 indexed requestId, bytes32 secret);
+
+        /// Emitted when a request is cancelled by the buyer.
+        event RequestCancelled(uint256 indexed requestId);
+
+        /// Emitted when a request expires past its deadline.
+        event RequestExpired(uint256 indexed requestId);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Known contract addresses on Base mainnet
@@ -271,5 +347,111 @@ mod tests {
             value: U256::from(1_000_000u64),
         };
         assert_eq!(event.value, U256::from(1_000_000u64));
+    }
+
+    // -- RequestRegistry sol! type generation --------------------------------
+
+    #[test]
+    fn test_request_registry_create_request_call() {
+        let call = RequestRegistry::createRequestCall {
+            ipfsCid: "ipfs://QmRequestCid".to_string(),
+            price: U256::from(5_000_000u64), // $5 USDC
+            deadline: U256::from(1_700_000_000u64),
+            targetAgentId: U256::from(42u64),
+        };
+        assert_eq!(call.ipfsCid, "ipfs://QmRequestCid");
+        assert_eq!(call.price, U256::from(5_000_000u64));
+        assert_eq!(call.deadline, U256::from(1_700_000_000u64));
+        assert_eq!(call.targetAgentId, U256::from(42u64));
+    }
+
+    #[test]
+    fn test_request_registry_submit_response_call() {
+        use alloy::primitives::B256;
+        let call = RequestRegistry::submitResponseCall {
+            requestId: U256::from(1u64),
+            ipfsCid: "ipfs://QmResponseCid".to_string(),
+            secretHash: B256::ZERO,
+        };
+        assert_eq!(call.requestId, U256::from(1u64));
+        assert_eq!(call.ipfsCid, "ipfs://QmResponseCid");
+        assert_eq!(call.secretHash, B256::ZERO);
+    }
+
+    #[test]
+    fn test_request_registry_claim_call() {
+        use alloy::primitives::B256;
+        let call = RequestRegistry::claimCall {
+            requestId: U256::from(1u64),
+            secret: B256::ZERO,
+        };
+        assert_eq!(call.requestId, U256::from(1u64));
+        assert_eq!(call.secret, B256::ZERO);
+    }
+
+    #[test]
+    fn test_request_registry_cancel_call() {
+        let call = RequestRegistry::cancelCall {
+            requestId: U256::from(7u64),
+        };
+        assert_eq!(call.requestId, U256::from(7u64));
+    }
+
+    #[test]
+    fn test_request_registry_expire_call() {
+        let call = RequestRegistry::expireCall {
+            requestId: U256::from(99u64),
+        };
+        assert_eq!(call.requestId, U256::from(99u64));
+    }
+
+    #[test]
+    fn test_request_registry_submit_validation_call() {
+        let call = RequestRegistry::submitValidationCall {
+            requestId: U256::from(3u64),
+            passed: true,
+            validator: Address::ZERO,
+        };
+        assert_eq!(call.requestId, U256::from(3u64));
+        assert!(call.passed);
+        assert_eq!(call.validator, Address::ZERO);
+    }
+
+    #[test]
+    fn test_request_registry_request_created_event() {
+        let event = RequestRegistry::RequestCreated {
+            requestId: U256::from(1u64),
+            buyer: Address::ZERO,
+            price: U256::from(10_000_000u64),
+            deadline: U256::from(1_700_000_000u64),
+        };
+        assert_eq!(event.requestId, U256::from(1u64));
+        assert_eq!(event.buyer, Address::ZERO);
+        assert_eq!(event.price, U256::from(10_000_000u64));
+        assert_eq!(event.deadline, U256::from(1_700_000_000u64));
+    }
+
+    #[test]
+    fn test_request_registry_response_submitted_event() {
+        use alloy::primitives::B256;
+        let event = RequestRegistry::ResponseSubmitted {
+            requestId: U256::from(2u64),
+            seller: Address::ZERO,
+            secretHash: B256::ZERO,
+        };
+        assert_eq!(event.requestId, U256::from(2u64));
+        assert_eq!(event.seller, Address::ZERO);
+        assert_eq!(event.secretHash, B256::ZERO);
+    }
+
+    #[test]
+    fn test_request_registry_request_claimed_event() {
+        use alloy::primitives::B256;
+        let event = RequestRegistry::RequestClaimed {
+            requestId: U256::from(5u64),
+            secret: B256::ZERO,
+        };
+        assert_eq!(event.requestId, U256::from(5u64));
+        assert_eq!(event.secret, B256::ZERO);
     }
 }
