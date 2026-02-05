@@ -44,6 +44,8 @@ pub fn format_error(err: &Error) -> String {
 
     if lower.contains("insufficient funds") {
         "Insufficient funds. Run `agentmarket fund` to check your balance.".to_string()
+    } else if lower.contains("already registered") {
+        "Agent is already registered on the network.".to_string()
     } else if lower.contains("nonce") {
         "Transaction conflict. Please try again.".to_string()
     } else if lower.contains("timeout") || lower.contains("connection") {
@@ -52,6 +54,20 @@ pub fn format_error(err: &Error) -> String {
         "Content network unavailable. Check IPFS connection.".to_string()
     } else if lower.contains("keystore") || lower.contains("decrypt") {
         "Invalid passphrase. Please try again.".to_string()
+    } else if lower.contains("not found") {
+        "Request not found. Check the ID and try again.".to_string()
+    } else if lower.contains("expired") {
+        "Request has expired and can no longer be processed.".to_string()
+    } else if lower.contains("secret") {
+        "Secret key missing. Your local data may be corrupted.".to_string()
+    } else if lower.contains("cancelled") {
+        "Request was cancelled.".to_string()
+    } else if lower.contains("validation") {
+        "Validation failed. Check the handler output.".to_string()
+    } else if lower.contains("permission") || lower.contains("unauthorized") {
+        "Permission denied. Check your identity and try again.".to_string()
+    } else if lower.contains("parse") {
+        "Invalid input format. Please check your command arguments.".to_string()
     } else {
         format!("Operation failed: {msg}")
     }
@@ -270,6 +286,84 @@ mod tests {
     fn test_format_error_decrypt() {
         let err = anyhow!("could not decrypt payload");
         assert_eq!(format_error(&err), "Invalid passphrase. Please try again.");
+    }
+
+    #[test]
+    fn test_format_error_already_registered() {
+        let err = anyhow!("token already registered in registry");
+        assert_eq!(
+            format_error(&err),
+            "Agent is already registered on the network."
+        );
+    }
+
+    #[test]
+    fn test_format_error_not_found() {
+        let err = anyhow!("request not found");
+        assert_eq!(
+            format_error(&err),
+            "Request not found. Check the ID and try again."
+        );
+    }
+
+    #[test]
+    fn test_format_error_expired() {
+        let err = anyhow!("request has expired");
+        assert_eq!(
+            format_error(&err),
+            "Request has expired and can no longer be processed."
+        );
+    }
+
+    #[test]
+    fn test_format_error_secret() {
+        let err = anyhow!("secret missing from local cache");
+        assert_eq!(
+            format_error(&err),
+            "Secret key missing. Your local data may be corrupted."
+        );
+    }
+
+    #[test]
+    fn test_format_error_cancelled() {
+        let err = anyhow!("request was cancelled by the buyer");
+        assert_eq!(format_error(&err), "Request was cancelled.");
+    }
+
+    #[test]
+    fn test_format_error_validation() {
+        let err = anyhow!("validation failed: handler returned non-zero exit code");
+        assert_eq!(
+            format_error(&err),
+            "Validation failed. Check the handler output."
+        );
+    }
+
+    #[test]
+    fn test_format_error_permission() {
+        let err = anyhow!("permission denied for this operation");
+        assert_eq!(
+            format_error(&err),
+            "Permission denied. Check your identity and try again."
+        );
+    }
+
+    #[test]
+    fn test_format_error_unauthorized() {
+        let err = anyhow!("unauthorized: caller is not the owner");
+        assert_eq!(
+            format_error(&err),
+            "Permission denied. Check your identity and try again."
+        );
+    }
+
+    #[test]
+    fn test_format_error_parse() {
+        let err = anyhow!("failed to parse input as JSON");
+        assert_eq!(
+            format_error(&err),
+            "Invalid input format. Please check your command arguments."
+        );
     }
 
     #[test]

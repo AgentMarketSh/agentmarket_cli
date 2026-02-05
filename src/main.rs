@@ -1,4 +1,5 @@
 use agentmarket::commands;
+use agentmarket::output::formatter;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
@@ -106,7 +107,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let filter =
         EnvFilter::try_from_env("AGENTMARKET_LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new("warn"));
 
@@ -120,7 +121,14 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::debug!("command dispatched");
 
-    match cli.command {
+    if let Err(err) = run_command(cli.command).await {
+        formatter::print_error(&err);
+        std::process::exit(1);
+    }
+}
+
+async fn run_command(command: Commands) -> anyhow::Result<()> {
+    match command {
         Commands::Init => commands::init::run().await,
         Commands::Fund => commands::fund::run().await,
         Commands::Register => commands::register::run().await,
