@@ -271,10 +271,7 @@ mod tests {
         );
 
         // Address must be 0x-prefixed and 42 characters long.
-        assert!(
-            address.starts_with("0x"),
-            "address must start with 0x"
-        );
+        assert!(address.starts_with("0x"), "address must start with 0x");
         assert_eq!(address.len(), 42, "address must be 42 characters");
 
         // Verify we can round-trip: derive the same address from the private key.
@@ -370,10 +367,7 @@ mod tests {
             assert_eq!(loaded.capabilities, vec!["code-review", "testing"]);
             assert!((loaded.pricing_usd - 5.0).abs() < f64::EPSILON);
             assert_eq!(loaded.public_key, "02abcdef1234567890");
-            assert_eq!(
-                loaded.address,
-                "0x1234567890abcdef1234567890abcdef12345678"
-            );
+            assert_eq!(loaded.address, "0x1234567890abcdef1234567890abcdef12345678");
             assert_eq!(loaded.version, "0.1.0");
         });
     }

@@ -148,8 +148,7 @@ pub fn config_dir() -> Result<PathBuf> {
             PathBuf::from(val)
         }
         _ => {
-            let home = dirs::home_dir()
-                .context("unable to determine home directory")?;
+            let home = dirs::home_dir().context("unable to determine home directory")?;
             let path = home.join(DEFAULT_DIR_NAME);
             debug!(path = %path.display(), "using default config directory");
             path
@@ -204,8 +203,7 @@ pub fn save(config: &Config) -> Result<()> {
     let path = config_dir()?.join(CONFIG_FILE);
     debug!(path = %path.display(), "saving config");
 
-    let contents = toml::to_string_pretty(config)
-        .context("failed to serialise config to TOML")?;
+    let contents = toml::to_string_pretty(config).context("failed to serialise config to TOML")?;
 
     fs::write(&path, contents)
         .with_context(|| format!("failed to write config file: {}", path.display()))?;

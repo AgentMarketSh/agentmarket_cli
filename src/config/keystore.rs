@@ -116,9 +116,8 @@ pub fn save_key(key_bytes: &[u8], passphrase: &str) -> Result<()> {
     // Write file.
     let path = keystore_path()?;
     debug!("writing keystore to {}", path.display());
-    fs::write(&path, json).with_context(|| {
-        format!("failed to write keystore file: {}", path.display())
-    })?;
+    fs::write(&path, json)
+        .with_context(|| format!("failed to write keystore file: {}", path.display()))?;
 
     // Set file permissions to 0600 (owner read/write only).
     #[cfg(unix)]
@@ -187,9 +186,9 @@ pub fn load_key(passphrase: &str) -> Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
         .map_err(|e| anyhow::anyhow!("failed to create AES-256-GCM cipher: {}", e))?;
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_ref())
-        .map_err(|_| anyhow::anyhow!("decryption failed — wrong passphrase or corrupted keystore"))?;
+    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
+        anyhow::anyhow!("decryption failed — wrong passphrase or corrupted keystore")
+    })?;
 
     debug!("keystore decrypted successfully");
     Ok(plaintext)
@@ -207,9 +206,8 @@ pub fn get_passphrase() -> Result<String> {
     }
 
     debug!("prompting for passphrase via stdin");
-    let passphrase =
-        rpassword::prompt_password_stdout("Enter passphrase: ")
-            .context("failed to read passphrase")?;
+    let passphrase = rpassword::prompt_password_stdout("Enter passphrase: ")
+        .context("failed to read passphrase")?;
 
     Ok(passphrase)
 }

@@ -45,8 +45,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let filter = EnvFilter::try_from_env("AGENTMARKET_LOG_LEVEL")
-        .unwrap_or_else(|_| EnvFilter::new("warn"));
+    let filter =
+        EnvFilter::try_from_env("AGENTMARKET_LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new("warn"));
 
     fmt::Subscriber::builder()
         .with_env_filter(filter)

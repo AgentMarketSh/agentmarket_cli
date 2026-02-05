@@ -102,11 +102,7 @@ pub fn print_agent_list(agents: &[(String, String)]) {
         .max(4); // minimum width = "Name"
 
     println!("{:<width$}  Description", "Name", width = name_width);
-    println!(
-        "{:<width$}  -----------",
-        "----",
-        width = name_width
-    );
+    println!("{:<width$}  -----------", "----", width = name_width);
 
     for (name, description) in agents {
         println!("{:<width$}  {description}", name, width = name_width);
@@ -222,7 +218,10 @@ mod tests {
     #[test]
     fn test_format_error_nonce() {
         let err = anyhow!("nonce too low");
-        assert_eq!(format_error(&err), "Transaction conflict. Please try again.");
+        assert_eq!(
+            format_error(&err),
+            "Transaction conflict. Please try again."
+        );
     }
 
     #[test]
@@ -264,19 +263,13 @@ mod tests {
     #[test]
     fn test_format_error_keystore() {
         let err = anyhow!("failed to open keystore");
-        assert_eq!(
-            format_error(&err),
-            "Invalid passphrase. Please try again."
-        );
+        assert_eq!(format_error(&err), "Invalid passphrase. Please try again.");
     }
 
     #[test]
     fn test_format_error_decrypt() {
         let err = anyhow!("could not decrypt payload");
-        assert_eq!(
-            format_error(&err),
-            "Invalid passphrase. Please try again."
-        );
+        assert_eq!(format_error(&err), "Invalid passphrase. Please try again.");
     }
 
     #[test]

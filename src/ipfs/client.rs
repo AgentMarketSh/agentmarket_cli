@@ -82,9 +82,7 @@ impl IpfsClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "IPFS add request failed with status {status}: {body}"
-            );
+            anyhow::bail!("IPFS add request failed with status {status}: {body}");
         }
 
         let add_resp: AddResponse = response
@@ -144,9 +142,7 @@ impl IpfsClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "IPFS cat request failed with status {status}: {body}"
-            );
+            anyhow::bail!("IPFS cat request failed with status {status}: {body}");
         }
 
         let bytes = response
@@ -173,9 +169,7 @@ impl IpfsClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "IPFS pin request failed with status {status}: {body}"
-            );
+            anyhow::bail!("IPFS pin request failed with status {status}: {body}");
         }
 
         debug!(cid = %cid, "CID pinned successfully");
