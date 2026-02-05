@@ -97,6 +97,7 @@ pub fn save_key(key_bytes: &[u8], passphrase: &str) -> Result<()> {
     // Encrypt.
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
         .map_err(|e| anyhow::anyhow!("failed to create AES-256-GCM cipher: {}", e))?;
+    #[allow(deprecated)] // upstream aes-gcm uses deprecated generic-array API
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, key_bytes)
@@ -185,6 +186,7 @@ pub fn load_key(passphrase: &str) -> Result<Vec<u8>> {
     // Decrypt.
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
         .map_err(|e| anyhow::anyhow!("failed to create AES-256-GCM cipher: {}", e))?;
+    #[allow(deprecated)] // upstream aes-gcm uses deprecated generic-array API
     let nonce = Nonce::from_slice(&nonce_bytes);
     let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
         anyhow::anyhow!("decryption failed — wrong passphrase or corrupted keystore")

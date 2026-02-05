@@ -55,7 +55,7 @@ impl TransactionSigner {
     ///
     /// The input vector is zeroed after construction regardless of success or
     /// failure, preventing the raw secret from lingering in memory.
-    pub fn from_bytes(key_bytes: &mut Vec<u8>) -> Result<Self> {
+    pub fn from_bytes(key_bytes: &mut [u8]) -> Result<Self> {
         let result = Self::from_bytes_inner(key_bytes);
 
         // Always zero the caller's bytes, even on error.

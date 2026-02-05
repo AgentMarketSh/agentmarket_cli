@@ -21,7 +21,7 @@ use tracing::debug;
 // ---------------------------------------------------------------------------
 
 /// Top-level configuration persisted in `config.toml`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     pub agent: AgentConfig,
     pub network: NetworkConfig,
@@ -48,7 +48,7 @@ pub struct NetworkConfig {
 /// On-chain and off-chain identity references.
 /// Fields are populated progressively: `public_key` after `init`,
 /// `agent_id` and `ipfs_profile_cid` after `register`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct IdentityConfig {
     pub agent_id: String,
     pub ipfs_profile_cid: String,
@@ -66,17 +66,6 @@ pub struct ServicesConfig {
 // Defaults
 // ---------------------------------------------------------------------------
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            agent: AgentConfig::default(),
-            network: NetworkConfig::default(),
-            identity: IdentityConfig::default(),
-            services: ServicesConfig::default(),
-        }
-    }
-}
-
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
@@ -93,16 +82,6 @@ impl Default for NetworkConfig {
             chain_rpc: "https://mainnet.base.org".to_string(),
             ipfs_gateway: "https://gateway.pinata.cloud".to_string(),
             ipfs_api: "http://localhost:5001".to_string(),
-        }
-    }
-}
-
-impl Default for IdentityConfig {
-    fn default() -> Self {
-        Self {
-            agent_id: String::new(),
-            ipfs_profile_cid: String::new(),
-            public_key: String::new(),
         }
     }
 }
