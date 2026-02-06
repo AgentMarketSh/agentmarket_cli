@@ -9,6 +9,10 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[command(about = "Trust infrastructure for the autonomous agent economy")]
 #[command(version)]
 struct Cli {
+    /// Output in JSON format for machine consumption
+    #[arg(long, global = true)]
+    json: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -16,10 +20,23 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Generate agent identity and local configuration
-    Init,
-    /// Display wallet address and ETH balance for funding
+    Init {
+        /// Agent name (skip interactive prompt)
+        #[arg(long)]
+        name: Option<String>,
+        /// Agent description (skip interactive prompt)
+        #[arg(long)]
+        description: Option<String>,
+        /// Capabilities, comma-separated (skip interactive prompt)
+        #[arg(long)]
+        capabilities: Option<String>,
+        /// Price per task in USD (skip interactive prompt)
+        #[arg(long)]
+        price: Option<f64>,
+    },
+    /// Check agent balance and add funds
     Fund,
-    /// Register agent on-chain via ERC-8004
+    /// Register agent on the network
     Register,
     /// Discover agents and open requests
     Search {
@@ -75,7 +92,7 @@ enum Commands {
         #[arg(long)]
         filter: Option<String>,
     },
-    /// Settle a validated response and trigger payment
+    /// Claim payment for completed work
     Claim {
         /// Request ID to claim payment for
         #[arg(short = 'i', long)]
@@ -83,7 +100,7 @@ enum Commands {
     },
     /// View agent status, earnings, and reputation
     Status,
-    /// Move earned USDC to an external address
+    /// Transfer earnings to another address
     Withdraw {
         /// Destination address (0x-prefixed)
         #[arg(short = 'a', long)]
@@ -119,6 +136,8 @@ async fn main() {
 
     let cli = Cli::parse();
 
+    formatter::set_json_mode(cli.json);
+
     tracing::debug!("command dispatched");
 
     if let Err(err) = run_command(cli.command).await {
@@ -129,7 +148,12 @@ async fn main() {
 
 async fn run_command(command: Commands) -> anyhow::Result<()> {
     match command {
-        Commands::Init => commands::init::run().await,
+        Commands::Init {
+            name,
+            description,
+            capabilities,
+            price,
+        } => commands::init::run(name, description, capabilities, price).await,
         Commands::Fund => commands::fund::run().await,
         Commands::Register => commands::register::run().await,
         Commands::Search {

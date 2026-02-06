@@ -26,6 +26,7 @@ aes-gcm = "0.10"
 rand = "0.8"
 hex = "0.4"
 rpassword = "5"
+zeroize = "1"
 
 # TODO: add txgate once we confirm crate availability
 # txgate = "0.1"

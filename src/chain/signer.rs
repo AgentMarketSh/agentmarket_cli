@@ -8,6 +8,7 @@ use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 use anyhow::{bail, Context, Result};
 use tracing::debug;
+use zeroize::Zeroize;
 
 use crate::config::keystore;
 
@@ -59,9 +60,7 @@ impl TransactionSigner {
         let result = Self::from_bytes_inner(key_bytes);
 
         // Always zero the caller's bytes, even on error.
-        for byte in key_bytes.iter_mut() {
-            *byte = 0;
-        }
+        key_bytes.zeroize();
 
         result
     }
@@ -75,12 +74,17 @@ impl TransactionSigner {
             );
         }
 
-        let key_array: [u8; 32] = key_bytes
+        let mut key_array: [u8; 32] = key_bytes
             .try_into()
             .map_err(|_| anyhow::anyhow!("private key must be exactly 32 bytes"))?;
 
         let signer = PrivateKeySigner::from_bytes(&key_array.into())
-            .context("failed to construct signer from private key bytes")?;
+            .context("failed to construct signer from private key bytes");
+
+        // Zero the intermediate stack copy of the key regardless of outcome.
+        key_array.zeroize();
+
+        let signer = signer?;
 
         debug!(address = %signer.address(), "transaction signer created");
 

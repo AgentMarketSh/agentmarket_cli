@@ -12,6 +12,7 @@ use alloy::signers::local::PrivateKeySigner;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+use zeroize::Zeroize;
 
 use crate::config::store::{config_dir, Config};
 
@@ -87,7 +88,15 @@ pub fn generate_keypair() -> Result<(Vec<u8>, String, String)> {
     let address = format!("{}", signer.address());
     debug!(address = %address, "generated new keypair");
 
-    let private_key_bytes = signer.credential().to_bytes().to_vec();
+    // Extract private key bytes — the to_bytes() -> to_vec() chain creates an
+    // intermediate GenericArray on the stack that is copied into the Vec.  We
+    // cannot zero the GenericArray directly (it's a temporary), but the Vec
+    // we return will be zeroed by the caller (TransactionSigner::from_bytes or
+    // keystore::save_key).
+    let mut raw_bytes = signer.credential().to_bytes();
+    let private_key_bytes = raw_bytes.to_vec();
+    // Zero the intermediate GenericArray copy on the stack.
+    raw_bytes[..].zeroize();
 
     // Derive compressed public key from the signing key.
     let verifying_key = signer.credential().verifying_key();
@@ -107,26 +116,33 @@ pub fn generate_keypair() -> Result<(Vec<u8>, String, String)> {
 ///
 /// The input must be exactly 32 bytes (a secp256k1 scalar).
 pub fn address_from_key(private_key_bytes: &[u8]) -> Result<(String, String)> {
-    let key_array: [u8; 32] = private_key_bytes
+    let mut key_array: [u8; 32] = private_key_bytes
         .try_into()
         .map_err(|_| anyhow::anyhow!("private key must be exactly 32 bytes"))?;
 
-    let signer = PrivateKeySigner::from_bytes(&key_array.into())
-        .context("failed to construct signer from private key bytes")?;
+    let result = (|| -> Result<(String, String)> {
+        let signer = PrivateKeySigner::from_bytes(&key_array.into())
+            .context("failed to construct signer from private key bytes")?;
 
-    let address = format!("{}", signer.address());
+        let address = format!("{}", signer.address());
 
-    let verifying_key = signer.credential().verifying_key();
-    let public_key_bytes = verifying_key.to_encoded_point(true);
-    let public_key_hex = hex::encode(public_key_bytes.as_bytes());
+        let verifying_key = signer.credential().verifying_key();
+        let public_key_bytes = verifying_key.to_encoded_point(true);
+        let public_key_hex = hex::encode(public_key_bytes.as_bytes());
 
-    debug!(
-        address = %address,
-        public_key = %public_key_hex,
-        "derived identity from existing key"
-    );
+        debug!(
+            address = %address,
+            public_key = %public_key_hex,
+            "derived identity from existing key"
+        );
 
-    Ok((public_key_hex, address))
+        Ok((public_key_hex, address))
+    })();
+
+    // Zero the local copy of the key regardless of success or failure.
+    key_array.zeroize();
+
+    result
 }
 
 // ---------------------------------------------------------------------------

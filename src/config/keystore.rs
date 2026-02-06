@@ -17,6 +17,7 @@ use argon2::Argon2;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+use zeroize::Zeroize;
 
 use super::store::config_dir;
 
@@ -92,7 +93,7 @@ pub fn save_key(key_bytes: &[u8], passphrase: &str) -> Result<()> {
 
     // Derive encryption key from passphrase.
     debug!("deriving encryption key via Argon2id");
-    let derived_key = derive_key(passphrase, &salt)?;
+    let mut derived_key = derive_key(passphrase, &salt)?;
 
     // Encrypt.
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
@@ -102,6 +103,9 @@ pub fn save_key(key_bytes: &[u8], passphrase: &str) -> Result<()> {
     let ciphertext = cipher
         .encrypt(nonce, key_bytes)
         .map_err(|e| anyhow::anyhow!("AES-256-GCM encryption failed: {}", e))?;
+
+    // Zero the derived key now that encryption is complete.
+    derived_key.zeroize();
 
     // Build the on-disk structure.
     let keystore = KeystoreFile {
@@ -161,7 +165,7 @@ pub fn load_key(passphrase: &str) -> Result<Vec<u8>> {
 
     let salt = hex::decode(&keystore.salt).context("invalid hex in keystore salt")?;
     let nonce_bytes = hex::decode(&keystore.nonce).context("invalid hex in keystore nonce")?;
-    let ciphertext =
+    let mut ciphertext =
         hex::decode(&keystore.ciphertext).context("invalid hex in keystore ciphertext")?;
 
     if salt.len() != SALT_LEN {
@@ -181,19 +185,23 @@ pub fn load_key(passphrase: &str) -> Result<Vec<u8>> {
 
     // Derive key from passphrase + stored salt.
     debug!("deriving decryption key via Argon2id");
-    let derived_key = derive_key(passphrase, &salt)?;
+    let mut derived_key = derive_key(passphrase, &salt)?;
 
     // Decrypt.
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
         .map_err(|e| anyhow::anyhow!("failed to create AES-256-GCM cipher: {}", e))?;
     #[allow(deprecated)] // upstream aes-gcm uses deprecated generic-array API
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
-        anyhow::anyhow!("decryption failed — wrong passphrase or corrupted keystore")
-    })?;
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext.as_ref())
+        .map_err(|_| anyhow::anyhow!("decryption failed — wrong passphrase or corrupted keystore"));
+
+    // Zero intermediate key material regardless of decryption outcome.
+    derived_key.zeroize();
+    ciphertext.zeroize();
 
     debug!("keystore decrypted successfully");
-    Ok(plaintext)
+    plaintext
 }
 
 /// Returns the passphrase for keystore operations.

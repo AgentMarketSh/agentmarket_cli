@@ -11,11 +11,10 @@ use alloy::primitives::Address;
 use anyhow::{bail, Context, Result};
 use tracing::debug;
 
+use super::CommandContext;
 use crate::chain::client::ChainClient;
 use crate::chain::contracts::addresses;
 use crate::chain::types::Balance;
-use crate::config;
-use crate::engine::identity::{self, IdentityState};
 use crate::engine::requests::{
     dollars_to_usdc, format_price_usd, LocalRequest, LocalRequestStatus, RequestCache, RequestRole,
 };
@@ -33,37 +32,17 @@ pub async fn run(
 ) -> Result<()> {
     debug!("starting request command");
 
-    // 1. Check that agent is initialized (config exists).
-    if !config::store::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
+    // 1. Load config, verify registered, derive address and public key.
+    let ctx = CommandContext::load_registered()?;
 
-    // 2. Load config and check identity state.
-    let cfg = config::store::load()?;
-    let state = identity::get_identity_state(&cfg);
+    debug!(address = %ctx.address, "agent address derived");
 
-    match state {
-        IdentityState::Uninitialized => {
-            bail!("Agent not initialized. Run `agentmarket init` first.");
-        }
-        IdentityState::Local { .. } => {
-            bail!("Agent not registered. Run `agentmarket register` first.");
-        }
-        IdentityState::Registered { .. } => {
-            debug!("identity state is Registered — proceeding with request creation");
-        }
-    }
-
-    // 3. Load keystore, derive address and public key.
-    let passphrase = config::keystore::get_passphrase()?;
-    let key_bytes = config::keystore::load_key(&passphrase)?;
-    let (public_key, address) = identity::address_from_key(&key_bytes)?;
-
-    debug!(address = %address, "agent address derived");
-
-    // 4. Check ETH balance — if insufficient, show funding instructions and bail.
-    let client = ChainClient::new(&cfg.network.chain_rpc).await?;
-    let addr: Address = address.parse().context("failed to parse agent address")?;
+    // 2. Check ETH balance — if insufficient, show funding instructions and bail.
+    let client = ChainClient::new(&ctx.cfg.network.chain_rpc).await?;
+    let addr: Address = ctx
+        .address
+        .parse()
+        .context("failed to parse agent address")?;
     let balance_wei = client.get_eth_balance(addr).await?;
     let balance = Balance { wei: balance_wei };
 
@@ -71,11 +50,11 @@ pub async fn run(
 
     if !balance.is_sufficient_for_registration() {
         formatter::print_warning("Insufficient funds to submit request.");
-        formatter::print_funding_instructions(&address, "0.0001 ETH");
+        formatter::print_funding_instructions(&ctx.address, "0.0001 ETH");
         bail!("Insufficient funds. Send ETH to your agent address and try again.");
     }
 
-    // 5. Build request payload JSON (task description + optional file content).
+    // 3. Build request payload JSON (task description + optional file content).
     formatter::print_info("Preparing request...");
 
     let file_content = if let Some(ref path) = file_path {
@@ -101,16 +80,16 @@ pub async fn run(
     let payload_bytes =
         serde_json::to_vec(&payload).context("failed to serialize request payload")?;
 
-    // 6. Encrypt payload with ECIES using the agent's own public key.
+    // 4. Encrypt payload with ECIES using the agent's own public key.
     //    (For a targeted request, the target agent's public key would be used;
     //     that requires a lookup that is not yet implemented.)
-    let ciphertext = encryption::encrypt(&public_key, &payload_bytes)
+    let ciphertext = encryption::encrypt(&ctx.public_key, &payload_bytes)
         .context("failed to encrypt request payload")?;
 
     debug!(ciphertext_len = ciphertext.len(), "payload encrypted");
 
-    // 7. Upload encrypted payload to IPFS.
-    let ipfs_client = IpfsClient::from_config(&cfg);
+    // 5. Upload encrypted payload to IPFS.
+    let ipfs_client = IpfsClient::from_config(&ctx.cfg);
     let cid = ipfs_client
         .add(&ciphertext)
         .await
@@ -119,7 +98,7 @@ pub async fn run(
     debug!(cid = %cid, "encrypted request uploaded to IPFS");
     formatter::print_info("Request uploaded to content network.");
 
-    // 8. Optionally pin via remote pinning service (if configured).
+    // 6. Optionally pin via remote pinning service (if configured).
     if let Some(pinner) = PinningService::from_env() {
         debug!("remote pinning service configured — pinning request");
         match pinner.pin_by_hash(&cid).await {
@@ -138,10 +117,10 @@ pub async fn run(
         debug!("no remote pinning service configured — skipping remote pin");
     }
 
-    // 9. Convert price from USD to USDC units (6 decimals).
+    // 7. Convert price from USD to USDC units (6 decimals).
     let price_usdc = dollars_to_usdc(price);
 
-    // 10. Calculate deadline as Unix timestamp (now + hours).
+    // 8. Calculate deadline as Unix timestamp (now + hours).
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .context("system clock error")?
@@ -155,11 +134,11 @@ pub async fn run(
         "request parameters computed"
     );
 
-    // 11. Generate a local request ID (timestamp-based, will be replaced by
+    // 9. Generate a local request ID (timestamp-based, will be replaced by
     //     the on-chain ID after contract submission).
     let local_request_id = format!("local-{now}");
 
-    // 12. Contract deployment gate: check if REQUEST_REGISTRY address is ZERO.
+    // 10. Contract deployment gate: check if REQUEST_REGISTRY address is ZERO.
     if addresses::REQUEST_REGISTRY == Address::ZERO {
         // Contract not yet deployed — save request locally.
         formatter::print_warning(
@@ -224,7 +203,7 @@ pub async fn run(
 
     formatter::print_info("Submitting request...");
 
-    // 13. Save to local request cache.
+    // 11. Save to local request cache.
     let local_request = LocalRequest {
         request_id: local_request_id.clone(),
         role: RequestRole::Buyer,
@@ -243,7 +222,7 @@ pub async fn run(
     RequestCache::save(&local_request)?;
     debug!(request_id = %local_request_id, "request saved to local cache");
 
-    // 14. Display success with request details (zero-crypto UX).
+    // 12. Display success with request details (zero-crypto UX).
     formatter::print_success(&format!(
         "Request created (ID: {local_request_id}). Task: \"{task}\" for {}",
         format_price_usd(price_usdc),

@@ -111,7 +111,7 @@ async fn daemon_tick(
     if addresses::REQUEST_REGISTRY == Address::ZERO {
         if pending_validations > 0 || claimable > 0 {
             formatter::print_warning(
-                "Request Registry not yet deployed. Validation and claims will be processed once deployed.",
+                "Network services not yet available. Validation and claims will be processed once ready.",
             );
         }
         return Ok(());

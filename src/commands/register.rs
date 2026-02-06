@@ -121,8 +121,8 @@ pub async fn run() -> Result<()> {
         // Contract is not yet deployed — save the profile CID to config
         // so the user does not have to re-upload once it is available.
         formatter::print_warning(
-            "The agent registry is not yet deployed. \
-             Registration will be available once the contract goes live.",
+            "Registration is not yet available. \
+             Registration will be available soon.",
         );
         formatter::print_info(
             "Your profile has been saved and will be used when registration opens.",
@@ -170,7 +170,7 @@ pub async fn run() -> Result<()> {
 
     // 10. Display success message (zero-crypto UX).
     formatter::print_success(&format!(
-        "Agent \"{}\" profile uploaded. Registration pending on-chain confirmation.",
+        "Agent \"{}\" profile uploaded. Registration pending confirmation.",
         cfg.agent.name,
     ));
 

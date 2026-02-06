@@ -10,11 +10,10 @@ use alloy::primitives::Address;
 use anyhow::{bail, Context, Result};
 use tracing::debug;
 
+use super::CommandContext;
 use crate::chain::client::ChainClient;
 use crate::chain::contracts::addresses;
 use crate::chain::types::Balance;
-use crate::config;
-use crate::engine::identity::{self, IdentityState};
 use crate::engine::requests::{dollars_to_usdc, format_price_usd};
 use crate::output::formatter;
 
@@ -25,39 +24,12 @@ use crate::output::formatter;
 pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
     debug!(destination = %destination, amount = ?amount, "starting withdraw command");
 
-    // 1. Check that agent is initialized (config + keystore exist).
-    if !config::store::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
+    // 1. Load config, verify registered, derive address.
+    let ctx = CommandContext::load_registered()?;
 
-    if !config::keystore::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
+    debug!(agent_address = %ctx.address, "agent address derived");
 
-    // 2. Load config and verify the agent is registered.
-    let cfg = config::store::load()?;
-    let state = identity::get_identity_state(&cfg);
-
-    match state {
-        IdentityState::Uninitialized => {
-            bail!("Agent not initialized. Run `agentmarket init` first.");
-        }
-        IdentityState::Local { .. } => {
-            bail!("Agent not registered. Run `agentmarket register` first.");
-        }
-        IdentityState::Registered { .. } => {
-            debug!("identity state is Registered — proceeding with withdraw");
-        }
-    }
-
-    // 3. Load keystore, derive agent address.
-    let passphrase = config::keystore::get_passphrase()?;
-    let key_bytes = config::keystore::load_key(&passphrase)?;
-    let (_public_key, agent_address) = identity::address_from_key(&key_bytes)?;
-
-    debug!(agent_address = %agent_address, "agent address derived");
-
-    // 4. Validate destination address format.
+    // 2. Validate destination address format.
     validate_destination(&destination)?;
 
     let dest_addr: Address = destination
@@ -67,7 +39,8 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
     debug!(destination = %dest_addr, "destination address validated");
 
     // Prevent self-transfer.
-    let agent_addr: Address = agent_address
+    let agent_addr: Address = ctx
+        .address
         .parse()
         .context("failed to parse agent address")?;
 
@@ -75,8 +48,8 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
         bail!("Destination is the same as your agent address. Nothing to transfer.");
     }
 
-    // 5. Check ETH balance for gas.
-    let client = ChainClient::new(&cfg.network.chain_rpc).await?;
+    // 3. Check ETH balance for gas.
+    let client = ChainClient::new(&ctx.cfg.network.chain_rpc).await?;
     let balance_wei = client.get_eth_balance(agent_addr).await?;
     let balance = Balance { wei: balance_wei };
 
@@ -84,11 +57,11 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
 
     if !balance.is_sufficient_for_registration() {
         formatter::print_warning("Insufficient funds to cover transfer fees.");
-        formatter::print_funding_instructions(&agent_address, "0.0001 ETH");
+        formatter::print_funding_instructions(&ctx.address, "0.0001 ETH");
         bail!("Insufficient funds. Send ETH to your agent address and try again.");
     }
 
-    // 6. Validate the withdrawal amount (if specified).
+    // 4. Validate the withdrawal amount (if specified).
     if let Some(dollars) = amount {
         if dollars <= 0.0 {
             bail!("Withdrawal amount must be greater than zero.");
@@ -98,7 +71,7 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
         }
     }
 
-    // 7. Contract deployment gate: check if USDC contract interaction is
+    // 5. Contract deployment gate: check if USDC contract interaction is
     //    available. The USDC address on Base is always set (it is a pre-deployed
     //    token), so we gate on the Request Registry to determine whether our
     //    full contract stack is live. For now, display the intended action.
@@ -145,14 +118,14 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
         return Ok(());
     }
 
-    // 8. Contracts are deployed — display confirmation prompt.
+    // 6. Contracts are deployed — display confirmation prompt.
     formatter::print_info(&format!(
         "Transferring {} to {}...",
         withdraw_display,
         short_destination(&destination),
     ));
 
-    // 9. Build and execute the USDC.transfer() transaction.
+    // 7. Build and execute the USDC.transfer() transaction.
     //
     // TODO: Wire up the actual transfer once USDC.transfer() is in the sol!
     // interface and alloy provider-with-signer is integrated:
@@ -180,7 +153,7 @@ pub async fn run(destination: String, amount: Option<f64>) -> Result<()> {
         "submitting USDC transfer (placeholder)"
     );
 
-    // 10. Display success in zero-crypto UX.
+    // 8. Display success in zero-crypto UX.
     formatter::print_success(&format!(
         "Transferred {} to {}.",
         withdraw_display,

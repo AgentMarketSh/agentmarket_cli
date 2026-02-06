@@ -4,6 +4,8 @@
 //! IPFS gateway for content retrieval. All network errors are returned as
 //! [`anyhow::Error`] values -- the client never panics on unreachable nodes.
 
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use reqwest::multipart;
 use tracing::debug;
@@ -46,7 +48,10 @@ impl IpfsClient {
         Self {
             api_url: api_url.trim_end_matches('/').to_string(),
             gateway_url: gateway_url.trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("failed to build HTTP client"),
         }
     }
 

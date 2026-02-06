@@ -35,7 +35,7 @@ pub async fn run() -> Result<()> {
         IdentityState::Local { .. } => {
             formatter::print_info(&format!("Agent: {}", cfg.agent.name));
             formatter::print_warning(
-                "Not registered on-chain. Run `agentmarket register` to join the network.",
+                "Not yet registered. Run `agentmarket register` to join the network.",
             );
         }
         IdentityState::Registered { agent_id, .. } => {
@@ -84,10 +84,7 @@ pub async fn run() -> Result<()> {
             formatter::print_info(&format!("Completed requests: {}", completed));
 
             if !cfg.identity.ipfs_profile_cid.is_empty() {
-                formatter::print_info(&format!(
-                    "Profile: ipfs://{}",
-                    cfg.identity.ipfs_profile_cid
-                ));
+                formatter::print_info(&format!("Profile: {}", cfg.identity.ipfs_profile_cid));
             }
         }
     }

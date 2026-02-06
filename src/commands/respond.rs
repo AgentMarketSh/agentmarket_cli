@@ -16,11 +16,10 @@ use alloy::primitives::Address;
 use anyhow::{bail, Context, Result};
 use tracing::debug;
 
+use super::CommandContext;
 use crate::chain::client::ChainClient;
 use crate::chain::contracts::addresses;
 use crate::chain::types::Balance;
-use crate::config;
-use crate::engine::identity::{self, IdentityState};
 use crate::engine::requests::{
     format_price_usd, generate_secret, LocalRequestStatus, RequestCache, RequestRole,
 };
@@ -36,42 +35,29 @@ pub async fn run(
 ) -> Result<()> {
     debug!("starting respond command");
 
-    // 1. Validate that at least one of file or message is provided.
+    // 0. Validate that at least one of file or message is provided.
     if file_path.is_none() && message.is_none() {
         bail!("Provide a file (--file) and/or a message (--message) for the response.");
     }
 
-    // 2. Check that agent is initialized (config exists).
-    if !config::store::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
-
-    // 3. Load config and check identity state -- must be registered.
-    let cfg = config::store::load()?;
-    let state = identity::get_identity_state(&cfg);
-
-    match state {
-        IdentityState::Uninitialized => {
-            bail!("Agent not initialized. Run `agentmarket init` first.");
-        }
-        IdentityState::Local { .. } => {
-            bail!("Agent not registered. Run `agentmarket register` first.");
-        }
-        IdentityState::Registered { .. } => {
-            debug!("identity state is Registered -- proceeding");
+    // 1. If a file path was given, verify it exists before doing heavy setup.
+    if let Some(ref path) = file_path {
+        if !std::path::Path::new(path).exists() {
+            bail!("File not found: {path}");
         }
     }
 
-    // 4. Load keystore, derive address.
-    let passphrase = config::keystore::get_passphrase()?;
-    let key_bytes = config::keystore::load_key(&passphrase)?;
-    let (public_key, address) = identity::address_from_key(&key_bytes)?;
+    // 2. Load config, verify registered, derive address.
+    let ctx = CommandContext::load_registered()?;
 
-    debug!(address = %address, "agent address derived");
+    debug!(address = %ctx.address, "agent address derived");
 
-    // 5. Check ETH balance -- bail with funding instructions if insufficient.
-    let client = ChainClient::new(&cfg.network.chain_rpc).await?;
-    let addr: Address = address.parse().context("failed to parse agent address")?;
+    // 3. Check ETH balance -- bail with funding instructions if insufficient.
+    let client = ChainClient::new(&ctx.cfg.network.chain_rpc).await?;
+    let addr: Address = ctx
+        .address
+        .parse()
+        .context("failed to parse agent address")?;
     let balance_wei = client.get_eth_balance(addr).await?;
     let balance = Balance { wei: balance_wei };
 
@@ -79,11 +65,11 @@ pub async fn run(
 
     if !balance.is_sufficient_for_registration() {
         formatter::print_warning("Insufficient funds to submit a response.");
-        formatter::print_funding_instructions(&address, "0.0001 ETH");
+        formatter::print_funding_instructions(&ctx.address, "0.0001 ETH");
         bail!("Insufficient funds. Send ETH to your agent address and try again.");
     }
 
-    // 6. Load the local request from cache to verify it exists and is Open.
+    // 4. Load the local request from cache to verify it exists and is Open.
     let mut local_request = RequestCache::load(&request_id)
         .with_context(|| format!("Request {request_id} not found in local cache."))?;
 
@@ -101,7 +87,7 @@ pub async fn run(
         format_price_usd(local_request.price_usdc),
     ));
 
-    // 7. Build deliverable payload (file content and/or message).
+    // 5. Build deliverable payload (file content and/or message).
     let mut payload = Vec::new();
 
     if let Some(ref msg) = message {
@@ -119,24 +105,24 @@ pub async fn run(
 
     debug!(payload_size = payload.len(), "deliverable payload built");
 
-    // 8. Generate secret S and compute keccak256(S) for the hash-lock.
+    // 6. Generate secret S and compute keccak256(S) for the hash-lock.
     let (secret_hex, secret_hash_hex) = generate_secret();
     debug!("secret and hash generated for hash-lock pattern");
 
-    // 9. Encrypt deliverable with ECIES using our own public key.
+    // 7. Encrypt deliverable with ECIES using our own public key.
     //    In a full implementation, the buyer's public key would be used so
     //    only the buyer can decrypt it. For now we use our own public key
     //    since the buyer's key is not yet available in the local cache.
     let encrypted_payload =
-        encryption::encrypt(&public_key, &payload).context("Failed to encrypt deliverable.")?;
+        encryption::encrypt(&ctx.public_key, &payload).context("Failed to encrypt deliverable.")?;
 
     debug!(
         encrypted_size = encrypted_payload.len(),
         "deliverable encrypted"
     );
 
-    // 10. Upload encrypted deliverable to IPFS.
-    let ipfs_client = IpfsClient::from_config(&cfg);
+    // 8. Upload encrypted deliverable to IPFS.
+    let ipfs_client = IpfsClient::from_config(&ctx.cfg);
     let cid = ipfs_client
         .add(&encrypted_payload)
         .await
@@ -145,7 +131,7 @@ pub async fn run(
     debug!(cid = %cid, "encrypted deliverable uploaded to IPFS");
     formatter::print_info("Response uploaded to content network.");
 
-    // 11. Optionally pin via remote pinning service.
+    // 9. Optionally pin via remote pinning service.
     if let Some(pinner) = PinningService::from_env() {
         debug!("remote pinning service configured -- pinning response");
         match pinner.pin_by_hash(&cid).await {
@@ -164,7 +150,7 @@ pub async fn run(
         debug!("no remote pinning service configured -- skipping remote pin");
     }
 
-    // 12. Contract deployment gate: check if REQUEST_REGISTRY is ZERO.
+    // 10. Contract deployment gate: check if REQUEST_REGISTRY is ZERO.
     if addresses::REQUEST_REGISTRY == Address::ZERO {
         formatter::print_warning(
             "The request registry is not yet deployed. \
@@ -194,7 +180,7 @@ pub async fn run(
         );
     }
 
-    // 13. Save secret S locally -- CRITICAL: losing S means losing payment.
+    // 11. Save secret S locally -- CRITICAL: losing S means losing payment.
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -210,7 +196,7 @@ pub async fn run(
     RequestCache::save(&local_request).context("Failed to save response to local cache.")?;
     debug!(request_id = %request_id, "local request cache updated with response");
 
-    // 14. Display success with response details (zero-crypto UX).
+    // 12. Display success with response details (zero-crypto UX).
     formatter::print_success(&format!("Response submitted for request {}.", request_id,));
     formatter::print_info(&format!(
         "  Price: {}",

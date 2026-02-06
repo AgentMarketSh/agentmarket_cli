@@ -8,7 +8,28 @@
 //! which are used exclusively by `init` and `fund` commands where the raw
 //! address must be shown so the user can send funds.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use anyhow::Error;
+
+// ---------------------------------------------------------------------------
+// JSON mode
+// ---------------------------------------------------------------------------
+
+static JSON_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable JSON output mode globally.
+///
+/// When enabled, functions like [`print_error`] emit machine-readable JSON
+/// instead of human-friendly text.
+pub fn set_json_mode(enabled: bool) {
+    JSON_MODE.store(enabled, Ordering::Relaxed);
+}
+
+/// Returns `true` if JSON output mode is currently active.
+pub fn is_json_mode() -> bool {
+    JSON_MODE.load(Ordering::Relaxed)
+}
 
 // ---------------------------------------------------------------------------
 // Success / info / warning primitives
@@ -51,7 +72,7 @@ pub fn format_error(err: &Error) -> String {
     } else if lower.contains("timeout") || lower.contains("connection") {
         "Network unreachable. Check your internet connection.".to_string()
     } else if lower.contains("ipfs") {
-        "Content network unavailable. Check IPFS connection.".to_string()
+        "Content network unavailable. Please try again later.".to_string()
     } else if lower.contains("keystore") || lower.contains("decrypt") {
         "Invalid passphrase. Please try again.".to_string()
     } else if lower.contains("not found") {
@@ -74,8 +95,17 @@ pub fn format_error(err: &Error) -> String {
 }
 
 /// Format and print an error to stderr.
+///
+/// In JSON mode, emits `{"error": "..."}` instead of plain text.
 pub fn print_error(err: &Error) {
-    eprintln!("{}", format_error(err));
+    if is_json_mode() {
+        let message = format_error(err);
+        // Escape any double-quotes or backslashes in the message for valid JSON.
+        let escaped = message.replace('\\', "\\\\").replace('"', "\\\"");
+        eprintln!("{{\"error\": \"{escaped}\"}}");
+    } else {
+        eprintln!("{}", format_error(err));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +293,7 @@ mod tests {
         let err = anyhow!("ipfs daemon not running");
         assert_eq!(
             format_error(&err),
-            "Content network unavailable. Check IPFS connection."
+            "Content network unavailable. Please try again later."
         );
     }
 
@@ -272,7 +302,7 @@ mod tests {
         let err = anyhow!("IPFS pin failed");
         assert_eq!(
             format_error(&err),
-            "Content network unavailable. Check IPFS connection."
+            "Content network unavailable. Please try again later."
         );
     }
 
@@ -392,5 +422,22 @@ mod tests {
     #[test]
     fn test_short_id_13() {
         assert_eq!(short_id("abcdefghijklm"), "abcdefgh...");
+    }
+
+    // -- JSON mode ------------------------------------------------------------
+
+    #[test]
+    fn test_json_mode_default_off() {
+        // Reset to known state.
+        set_json_mode(false);
+        assert!(!is_json_mode());
+    }
+
+    #[test]
+    fn test_json_mode_toggle() {
+        set_json_mode(true);
+        assert!(is_json_mode());
+        set_json_mode(false);
+        assert!(!is_json_mode());
     }
 }

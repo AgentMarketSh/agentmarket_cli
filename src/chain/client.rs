@@ -4,9 +4,10 @@
 //! the Base L2 network. Only exposes balance queries and connectivity checks
 //! for now — transaction signing is deferred to T-021.
 
-use alloy::network::Ethereum;
+use std::time::Duration;
+
 use alloy::primitives::{Address, U256};
-use alloy::providers::{Provider, RootProvider};
+use alloy::providers::{Provider, ProviderBuilder, RootProvider};
 use anyhow::{Context, Result};
 use tracing::debug;
 
@@ -28,16 +29,22 @@ impl ChainClient {
     /// Create a new chain client connected to the given RPC endpoint.
     ///
     /// The URL is parsed and an HTTP provider is built via alloy's
-    /// [`RootProvider`]. No actual network call is made during construction
+    /// [`ProviderBuilder`] with a custom reqwest client configured with a
+    /// 30-second timeout. No actual network call is made during construction
     /// — use [`is_connected`] to verify reachability.
     pub async fn new(rpc_url: &str) -> Result<Self> {
         debug!(rpc_url, "creating chain client");
 
-        let url = rpc_url
+        let url: reqwest::Url = rpc_url
             .parse()
             .with_context(|| format!("invalid network endpoint: {rpc_url}"))?;
 
-        let provider = RootProvider::<Ethereum>::new_http(url);
+        let http_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .context("failed to build HTTP client for chain provider")?;
+
+        let provider = ProviderBuilder::default().connect_reqwest(http_client, url);
 
         Ok(Self {
             provider,

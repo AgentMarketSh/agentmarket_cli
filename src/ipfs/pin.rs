@@ -4,6 +4,8 @@
 //! beyond the local IPFS node. The API key is configured via the
 //! `AGENTMARKET_IPFS_PIN_KEY` environment variable.
 
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use reqwest::multipart;
 use tracing::debug;
@@ -51,7 +53,10 @@ impl PinningService {
     pub fn new(api_key: &str) -> Self {
         Self {
             api_key: api_key.to_string(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("failed to build HTTP client"),
             api_url: PINATA_API_URL.to_string(),
         }
     }

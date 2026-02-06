@@ -78,8 +78,8 @@ pub async fn run(
     if addresses::REQUEST_REGISTRY == Address::ZERO {
         formatter::print_info("Validation");
         formatter::print_info("");
-        formatter::print_info("The request registry contract is not yet deployed on-chain.");
-        formatter::print_info("Validation will become available once the contract is live.");
+        formatter::print_info("The network validation service is not yet available.");
+        formatter::print_info("Validation will become available soon.");
         formatter::print_info("");
         formatter::print_info("In the meantime, you can:");
         formatter::print_info("  - Run `agentmarket search --requests` to discover open requests");
@@ -114,7 +114,7 @@ pub async fn run(
 
         formatter::print_info("");
         formatter::print_info(
-            "Dry-run validation results will be saved locally but not submitted on-chain.",
+            "Dry-run validation results will be saved locally but not submitted to the network.",
         );
 
         // Process the first pending validation as a dry run.
@@ -289,7 +289,7 @@ fn process_validation(
         //       result.passed,
         //       addr,
         //   ).send().await?.get_receipt().await?;
-        formatter::print_info("Submitting validation on-chain...");
+        formatter::print_info("Submitting validation...");
         debug!(
             contract = %addresses::REQUEST_REGISTRY,
             request_id = %req.request_id,

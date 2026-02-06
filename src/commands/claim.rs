@@ -9,52 +9,27 @@ use alloy::primitives::Address;
 use anyhow::{bail, Context, Result};
 use tracing::debug;
 
+use super::CommandContext;
 use crate::chain::client::ChainClient;
 use crate::chain::contracts::addresses;
 use crate::chain::types::Balance;
-use crate::config;
-use crate::engine::identity::{self, IdentityState};
 use crate::engine::requests::{format_price_usd, LocalRequestStatus, RequestCache, RequestRole};
 use crate::output::formatter;
 
 pub async fn run(request_id: String) -> Result<()> {
     debug!(request_id = %request_id, "starting claim command");
 
-    // 1. Check that agent is initialized (config + keystore exist).
-    if !config::store::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
+    // 1. Load config, verify registered, derive address.
+    let ctx = CommandContext::load_registered()?;
 
-    if !config::keystore::exists()? {
-        bail!("Agent not initialized. Run `agentmarket init` first.");
-    }
+    debug!(address = %ctx.address, "agent address derived");
 
-    // 2. Load config and verify the agent is registered.
-    let cfg = config::store::load()?;
-    let state = identity::get_identity_state(&cfg);
-
-    match state {
-        IdentityState::Uninitialized => {
-            bail!("Agent not initialized. Run `agentmarket init` first.");
-        }
-        IdentityState::Local { .. } => {
-            bail!("Agent not registered. Run `agentmarket register` first.");
-        }
-        IdentityState::Registered { .. } => {
-            debug!("identity state is Registered — proceeding with claim");
-        }
-    }
-
-    // 3. Load keystore, derive address.
-    let passphrase = config::keystore::get_passphrase()?;
-    let key_bytes = config::keystore::load_key(&passphrase)?;
-    let (_public_key, address) = identity::address_from_key(&key_bytes)?;
-
-    debug!(address = %address, "agent address derived");
-
-    // 4. Check ETH balance — bail if insufficient for gas.
-    let client = ChainClient::new(&cfg.network.chain_rpc).await?;
-    let addr: Address = address.parse().context("failed to parse agent address")?;
+    // 2. Check ETH balance — bail if insufficient for gas.
+    let client = ChainClient::new(&ctx.cfg.network.chain_rpc).await?;
+    let addr: Address = ctx
+        .address
+        .parse()
+        .context("failed to parse agent address")?;
     let balance_wei = client.get_eth_balance(addr).await?;
     let balance = Balance { wei: balance_wei };
 
@@ -62,11 +37,11 @@ pub async fn run(request_id: String) -> Result<()> {
 
     if !balance.is_sufficient_for_registration() {
         formatter::print_warning("Insufficient funds to settle payment.");
-        formatter::print_funding_instructions(&address, "0.0001 ETH");
+        formatter::print_funding_instructions(&ctx.address, "0.0001 ETH");
         bail!("Insufficient funds. Send ETH to your agent address and try again.");
     }
 
-    // 5. Load the request from local cache.
+    // 3. Load the request from local cache.
     let mut request = match RequestCache::load(&request_id) {
         Ok(r) => r,
         Err(_) => {
@@ -84,7 +59,7 @@ pub async fn run(request_id: String) -> Result<()> {
         "request loaded from cache"
     );
 
-    // 6. Verify the agent is the seller for this request.
+    // 4. Verify the agent is the seller for this request.
     if request.role != RequestRole::Seller {
         bail!(
             "You are not the seller for request {request_id}. \
@@ -92,7 +67,7 @@ pub async fn run(request_id: String) -> Result<()> {
         );
     }
 
-    // 7. Verify the request is in Validated status.
+    // 5. Verify the request is in Validated status.
     if request.status != LocalRequestStatus::Validated {
         match request.status {
             LocalRequestStatus::Claimed => {
@@ -126,7 +101,7 @@ pub async fn run(request_id: String) -> Result<()> {
         }
     }
 
-    // 8. Retrieve the secret S from local cache.
+    // 6. Retrieve the secret S from local cache.
     let secret = match &request.secret {
         Some(s) if !s.is_empty() => s.clone(),
         _ => {
@@ -140,7 +115,7 @@ pub async fn run(request_id: String) -> Result<()> {
 
     debug!("secret retrieved from local cache");
 
-    // 9. Contract deployment gate: check if REQUEST_REGISTRY is deployed.
+    // 7. Contract deployment gate: check if REQUEST_REGISTRY is deployed.
     if addresses::REQUEST_REGISTRY == Address::ZERO {
         formatter::print_warning(
             "The request registry contract is not yet deployed. \
@@ -163,7 +138,7 @@ pub async fn run(request_id: String) -> Result<()> {
         return Ok(());
     }
 
-    // 10. Contract is deployed — send claim transaction.
+    // 8. Contract is deployed — send claim transaction.
     // TODO: Once alloy provider-with-signer integration is complete,
     // send the actual claim(requestId, secret) transaction here:
     //   let signer = TransactionSigner::from_keystore_with_passphrase(&passphrase)?;
@@ -184,7 +159,7 @@ pub async fn run(request_id: String) -> Result<()> {
 
     formatter::print_info("Submitting claim...");
 
-    // 11. Update local request cache status to Claimed.
+    // 9. Update local request cache status to Claimed.
     request.status = LocalRequestStatus::Claimed;
     request.updated_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -194,7 +169,7 @@ pub async fn run(request_id: String) -> Result<()> {
 
     debug!(request_id = %request_id, "local cache updated to Claimed");
 
-    // 12. Display success with payment details (zero-crypto UX).
+    // 10. Display success with payment details (zero-crypto UX).
     let earned = format_price_usd(request.price_usdc);
     formatter::print_success(&format!("Earned {earned} for request {request_id}."));
 

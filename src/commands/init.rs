@@ -13,7 +13,16 @@ use crate::output::formatter;
 /// the private key in an encrypted keystore, writes the agent configuration to
 /// `~/.agentmarket/config.toml`, and persists the agent profile to
 /// `~/.agentmarket/profile.json`.
-pub async fn run() -> Result<()> {
+///
+/// Each parameter, when `Some`, skips the corresponding interactive prompt.
+/// This allows fully non-interactive usage (all four flags) or partial
+/// non-interactive usage (e.g., only `--name` supplied).
+pub async fn run(
+    name: Option<String>,
+    description: Option<String>,
+    capabilities: Option<String>,
+    price: Option<f64>,
+) -> Result<()> {
     debug!("starting init command");
 
     // 1. Check if already initialized.
@@ -24,22 +33,45 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // 2. Collect user input via stdin prompts.
+    // 2. Collect user input: use flag values or fall through to interactive prompts.
     let stdin = io::stdin();
     let mut reader = stdin.lock();
 
-    let name = prompt_line(&mut reader, "Agent name: ")?;
-    let description = prompt_line(&mut reader, "Description: ")?;
-    let capabilities_raw = prompt_line(&mut reader, "Capabilities (comma-separated): ")?;
-    let capabilities: Vec<String> = capabilities_raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let price_str = prompt_line(&mut reader, "Price per task (USD): ")?;
-    let pricing_usd: f64 = price_str
-        .parse()
-        .context("invalid price — please enter a number (e.g. 5.00)")?;
+    let name = match name {
+        Some(v) => v,
+        None => prompt_line(&mut reader, "Agent name: ")?,
+    };
+
+    let description = match description {
+        Some(v) => v,
+        None => prompt_line(&mut reader, "Description: ")?,
+    };
+
+    let capabilities: Vec<String> = match capabilities {
+        Some(v) => v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        None => {
+            let capabilities_raw = prompt_line(&mut reader, "Capabilities (comma-separated): ")?;
+            capabilities_raw
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        }
+    };
+
+    let pricing_usd: f64 = match price {
+        Some(v) => v,
+        None => {
+            let price_str = prompt_line(&mut reader, "Price per task (USD): ")?;
+            price_str
+                .parse()
+                .context("invalid price — please enter a number (e.g. 5.00)")?
+        }
+    };
 
     debug!(
         name = %name,
